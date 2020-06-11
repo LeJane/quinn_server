@@ -1,6 +1,6 @@
 
 use anyhow::{anyhow, Result};
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{LittleEndian,  WriteBytesExt};
 use futures::{StreamExt, TryFutureExt};
 use std::{
     ascii, fs,
@@ -100,14 +100,11 @@ async fn main() -> Result<()> {
             Err(error) => println!("error: {}", error),
         }
     }
-
-    println!("end");
-    Ok(())
 }
 
 async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
     let quinn::NewConnection {
-        connection,
+        // connection,
         mut bi_streams,
         ..
     } = conn.await?;
