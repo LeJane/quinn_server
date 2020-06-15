@@ -38,15 +38,15 @@ async fn main() -> Result<()> {
 
         let _s = connection.connection.open_uni().await?;
 
-        let _bi_streams = connection.bi_streams;
+        let bi_streams = connection.bi_streams;
 
         write_to_peer_connection(&connection.connection, b"asdfasdfas".to_vec()).await?;
 
-        // tokio::spawn(
-        //     handle_conection(connection.connection, bi_streams).unwrap_or_else(move |e| {
-        //         error!("connection failed: {reason}", reason = e.to_string());
-        //     }),
-        // );
+        tokio::spawn(
+            handle_conection(connection.connection, bi_streams).unwrap_or_else(move |e| {
+                error!("connection failed: {reason}", reason = e.to_string());
+            }),
+        );
     }
 
     println!("Hello, world!");

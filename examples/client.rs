@@ -57,48 +57,48 @@ async fn main() -> Result<()> {
     });
 
     // async {
-        loop {
-            let mut input = String::new();
-            match sysio::stdin().read_line(&mut input) {
-                Ok(_n) => {
-                    println!("input:{}", input);
+    loop {
+        let mut input = String::new();
+        match sysio::stdin().read_line(&mut input) {
+            Ok(_n) => {
+                println!("input:{}", input);
 
-                    let conn = endpoint
-                        .connect(&remote, "localhost")
-                        .unwrap()
-                        .await
-                        .expect("connect")
-                        .connection;
-                    let (mut s, recv) = conn.open_bi().await.unwrap();
+                let conn = endpoint
+                    .connect(&remote, "localhost")
+                    .unwrap()
+                    .await
+                    .expect("connect")
+                    .connection;
+                let (mut s, recv) = conn.open_bi().await.unwrap();
 
-                    let mut request = vec![];
-                    request.write_u16::<LittleEndian>(1001).unwrap();
-                    request.write_u8(1).unwrap();
-                    request
-                        .write_u16::<LittleEndian>(input.as_bytes().len() as u16)
-                        .unwrap();
-                    // request.write_u64::<LittleEndian>().unwrap();
+                let mut request = vec![];
+                request.write_u16::<LittleEndian>(1001).unwrap();
+                request.write_u8(1).unwrap();
+                request
+                    .write_u16::<LittleEndian>(input.as_bytes().len() as u16)
+                    .unwrap();
+                // request.write_u64::<LittleEndian>().unwrap();
 
-                    request.extend_from_slice(input.as_bytes());
+                request.extend_from_slice(input.as_bytes());
 
-                    s.write_all(input.as_bytes()).await.expect("send error.");
-                    s.finish().await.unwrap();
+                s.write_all(input.as_bytes()).await.expect("send error.");
+                s.finish().await.unwrap();
 
-                    let resp: Vec<u8> = recv
-                        .read_to_end(usize::max_value())
-                        .await
-                        .map_err(|e| anyhow!("failed to read response stream: {}", e))
-                        .unwrap();
+                let resp: Vec<u8> = recv
+                    .read_to_end(usize::max_value())
+                    .await
+                    .map_err(|e| anyhow!("failed to read response stream: {}", e))
+                    .unwrap();
 
-                    println!(
-                        "response received in {:?}",
-                        std::str::from_utf8(&resp).unwrap()
-                    );
-                    // conn.close(0u32.into(), b"");
-                }
-                Err(error) => println!("error: {}", error),
+                println!(
+                    "response received in {:?}",
+                    std::str::from_utf8(&resp).unwrap()
+                );
+                // conn.close(0u32.into(), b"");
             }
+            Err(error) => println!("error: {}", error),
         }
+    }
     // }
     // .await;
 
@@ -108,14 +108,14 @@ async fn main() -> Result<()> {
 async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
     let quinn::NewConnection {
         // connection,
-        mut bi_streams,
+        mut uni_streams,
         ..
     } = conn.await?;
 
     async {
         info!("established");
         //new request
-        while let Some(stream) = bi_streams.next().await {
+        while let Some(stream) = uni_streams.next().await {
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
                     info!("connection closed");
@@ -140,7 +140,7 @@ async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
 }
 
 //handle request
-async fn handle_request((mut send, recv): (quinn::SendStream, quinn::RecvStream)) -> Result<()> {
+async fn handle_request(recv: quinn::RecvStream) -> Result<()> {
     println!("request start.");
     let req = recv
         .read_to_end(64 * 1024)
@@ -159,16 +159,7 @@ async fn handle_request((mut send, recv): (quinn::SendStream, quinn::RecvStream)
 
     //excute request
 
-    let resp = "success...";
-
-    send.write_all(&resp.as_bytes())
-        .await
-        .map_err(|e| anyhow!("failed to send response:{}", e))?;
-
-    send.finish()
-        .await
-        .map_err(|e| anyhow!("failed to shutdown stream:{}", e))?;
-
+    // let resp = "success...";
     info!("complete");
     Ok(())
 }
