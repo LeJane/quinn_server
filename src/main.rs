@@ -21,6 +21,13 @@ async fn main() -> Result<()> {
     let (_cert, cert_chain, key) = build_certs().expect("failed build certificate.");
 
     let mut server = quinn::ServerConfigBuilder::default().build();
+
+    let server_mut_config = Arc::get_mut(&mut server.transport).unwrap();
+    server_mut_config
+        .max_idle_timeout(Some(std::time::Duration::new(60, 0)))
+        .unwrap();
+    server_mut_config.keep_alive_interval(Some(std::time::Duration::new(120, 0)));
+
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 4332);
     server.certificate(cert_chain, key)?;
     let mut endpoint = quinn::Endpoint::builder();
@@ -29,18 +36,14 @@ async fn main() -> Result<()> {
     let (endpoint, mut incoming) = endpoint.bind(&socket_addr).expect("bind failed");
     info!("server listening on {:?}", endpoint.local_addr());
 
-    // let addr = endpoint_arc.local_addr().unwrap();
-
     while let Some(connecting) = incoming.next().await {
         info!("connection incoming");
 
         let connection = connecting.await?;
 
-        let _s = connection.connection.open_uni().await?;
-
         let bi_streams = connection.bi_streams;
 
-        write_to_peer_connection(&connection.connection, b"asdfasdfas".to_vec()).await?;
+        write_to_peer_connection(&connection.connection, b"lojoljojohohi".to_vec()).await?;
 
         tokio::spawn(
             handle_conection(connection.connection, bi_streams).unwrap_or_else(move |e| {
@@ -84,7 +87,7 @@ async fn handle_conection(
             };
 
             tokio::spawn(
-                handle_request(stream)
+                handle_request(connection.clone(), stream)
                     .unwrap_or_else(move |e| error!("failed:{reason}", reason = e.to_string()))
                     .instrument(info_span!("request")),
             );
@@ -96,10 +99,10 @@ async fn handle_conection(
     Ok(())
 }
 
-//处理请求
+//handle request
 #[allow(unused)]
 async fn handle_request(
-    // conn: quinn::Connection,
+    conn: quinn::Connection,
     (mut send, recv): (quinn::SendStream, quinn::RecvStream),
 ) -> Result<()> {
     println!("request start.");
@@ -109,7 +112,7 @@ async fn handle_request(
         .await
         .map_err(|e| anyhow!("failed reading request:{}", e))?;
 
-    println!("内容：{:?}", str::from_utf8(&req).unwrap());
+    println!("content: {:?}", str::from_utf8(&req).unwrap());
 
     //excute request
 
@@ -120,6 +123,8 @@ async fn handle_request(
     send.finish()
         .await
         .map_err(|e| anyhow!("failed to shutdown stream:{}", e))?;
+
+    write_to_peer_connection(&conn, req).await?;
 
     Ok(())
 }
@@ -182,6 +187,7 @@ fn configure_client_connector() -> quinn::ClientConfig {
 
     peer_cfg
 }
+
 #[allow(unused)]
 async fn send_data_to(
     endpoint: Arc<quinn::Endpoint>,

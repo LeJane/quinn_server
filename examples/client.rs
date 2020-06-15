@@ -41,35 +41,54 @@ async fn main() -> Result<()> {
         }
     }
 
+    let mut client_build = client_config.build();
+    let client_trans = std::sync::Arc::get_mut(&mut client_build.transport).unwrap();
+    client_trans
+        .max_idle_timeout(Some(std::time::Duration::new(60, 0)))
+        .unwrap();
+    client_trans.keep_alive_interval(Some(std::time::Duration::new(120, 0)));
+
     let start = Instant::now();
 
-    enpoint.default_client_config(client_config.build());
-    let (endpoint, mut incoming) = enpoint.bind(&"[::]:0".parse().unwrap())?;
+    enpoint.default_client_config(client_build);
+    let (endpoint, mut _incoming) = enpoint.bind(&"[::]:0".parse().unwrap())?;
+
+    let socket = std::net::UdpSocket::bind("[::]:0").unwrap();
+    let addr = socket.local_addr().unwrap();
+    eprintln!("rebinding to {}", addr);
+    endpoint.rebind(socket).expect("rebind failed");
+
+    let quinn::NewConnection {
+        connection,
+        bi_streams,
+        ..
+    } = endpoint
+        .connect(&remote, "localhost")
+        .unwrap()
+        .await
+        .expect("connect");
+
     println!("connected at {:?}", start.elapsed());
     tokio::spawn(async move {
-        println!("adfasdf");
-        while let Some(connecting) = incoming.next().await {
-            println!("server connection incoming");
-            tokio::spawn(handle_connection(connecting).unwrap_or_else(move |e| {
-                error!("connection failed: {reason}", reason = e.to_string());
-            }));
+        if let Err(e) = handle_connection(bi_streams).await {
+            // connection.remote_address()
+            error!("connection failed: {reason}", reason = e.to_string());
         }
     });
 
-    // async {
     loop {
         let mut input = String::new();
         match sysio::stdin().read_line(&mut input) {
             Ok(_n) => {
                 println!("input:{}", input);
 
-                let conn = endpoint
-                    .connect(&remote, "localhost")
-                    .unwrap()
+                let (mut s, recv) = connection
+                    .open_bi()
                     .await
-                    .expect("connect")
-                    .connection;
-                let (mut s, recv) = conn.open_bi().await.unwrap();
+                    .map_err(|e| {
+                        error!("failed open stream:{}", e);
+                    })
+                    .unwrap();log_syntax!()
 
                 let mut request = vec![];
                 request.write_u16::<LittleEndian>(1001).unwrap();
@@ -99,49 +118,35 @@ async fn main() -> Result<()> {
             Err(error) => println!("error: {}", error),
         }
     }
-    // }
-    // .await;
-
-    // Ok(())
 }
 
-async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
-    let quinn::NewConnection {
-        // connection,
-        mut uni_streams,
-        ..
-    } = conn.await?;
+async fn handle_connection(mut bi_streams: quinn::IncomingBiStreams) -> Result<()> {
+    info!("established");
+    //new request
+    while let Some(stream) = bi_streams.next().await {
+        let stream = match stream {
+            Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
+                info!("connection closed");
+                return Ok(());
+            }
+            Err(e) => {
+                info!("connection errp");
+                return Err(e.into());
+            }
+            Ok(s) => s,
+        };
 
-    async {
-        info!("established");
-        //new request
-        while let Some(stream) = uni_streams.next().await {
-            let stream = match stream {
-                Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    info!("connection closed");
-                    return Ok(());
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-                Ok(s) => s,
-            };
-
-            tokio::spawn(
-                handle_request(stream)
-                    .unwrap_or_else(move |e| error!("failed:{reason}", reason = e.to_string()))
-                    .instrument(info_span!("request")),
-            );
-        }
-        Ok(())
+        tokio::spawn(
+            handle_request(stream)
+                .unwrap_or_else(move |e| error!("failed:{reason}", reason = e.to_string()))
+                .instrument(info_span!("request")),
+        );
     }
-    .await?;
     Ok(())
 }
 
 //handle request
-async fn handle_request(recv: quinn::RecvStream) -> Result<()> {
-    println!("request start.");
+async fn handle_request((mut _send, recv): (quinn::SendStream, quinn::RecvStream)) -> Result<()> {
     let req = recv
         .read_to_end(64 * 1024)
         .await
@@ -153,13 +158,10 @@ async fn handle_request(recv: quinn::RecvStream) -> Result<()> {
         escaped.push_str(str::from_utf8(&part).unwrap());
     }
 
-    println!("content：{:?}", escaped);
+    println!("接收content：{:?}", escaped);
 
     info!(content=%escaped);
 
-    //excute request
-
-    // let resp = "success...";
     info!("complete");
     Ok(())
 }
