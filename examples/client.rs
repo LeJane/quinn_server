@@ -1,6 +1,5 @@
-
 use anyhow::{anyhow, Result};
-use byteorder::{LittleEndian,  WriteBytesExt};
+use byteorder::{LittleEndian, WriteBytesExt};
 use futures::{StreamExt, TryFutureExt};
 use std::{
     ascii, fs,
@@ -26,11 +25,9 @@ async fn main() -> Result<()> {
         .next()
         .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
 
-    
     let mut enpoint = quinn::Endpoint::builder();
     let mut client_config = quinn::ClientConfigBuilder::default();
 
-    
     let dirs = directories::ProjectDirs::from("org", "client", "myquinn").unwrap();
     match fs::read(dirs.data_local_dir().join("cert.der")) {
         Ok(cert) => {
@@ -59,47 +56,53 @@ async fn main() -> Result<()> {
         }
     });
 
-    loop {
-        let mut input = String::new();
-        match sysio::stdin().read_line(&mut input) {
-            Ok(_n) => {
-                println!("input:{}", input);
+    // async {
+        loop {
+            let mut input = String::new();
+            match sysio::stdin().read_line(&mut input) {
+                Ok(_n) => {
+                    println!("input:{}", input);
 
-                let conn = endpoint
-                    .connect(&remote, "localhost")
-                    .unwrap()
-                    .await
-                    .expect("connect")
-                    .connection;
-                let (mut s, recv) = conn.open_bi().await.unwrap();
+                    let conn = endpoint
+                        .connect(&remote, "localhost")
+                        .unwrap()
+                        .await
+                        .expect("connect")
+                        .connection;
+                    let (mut s, recv) = conn.open_bi().await.unwrap();
 
-                let mut request = vec![];
-                request.write_u16::<LittleEndian>(1001).unwrap();
-                request.write_u8(1).unwrap();
-                request
-                    .write_u16::<LittleEndian>(input.as_bytes().len() as u16)
-                    .unwrap();
-                // request.write_u64::<LittleEndian>().unwrap();
+                    let mut request = vec![];
+                    request.write_u16::<LittleEndian>(1001).unwrap();
+                    request.write_u8(1).unwrap();
+                    request
+                        .write_u16::<LittleEndian>(input.as_bytes().len() as u16)
+                        .unwrap();
+                    // request.write_u64::<LittleEndian>().unwrap();
 
-                request.extend_from_slice(input.as_bytes());
+                    request.extend_from_slice(input.as_bytes());
 
-                s.write_all(input.as_bytes()).await.expect("send error.");
-                s.finish().await.unwrap();
+                    s.write_all(input.as_bytes()).await.expect("send error.");
+                    s.finish().await.unwrap();
 
-                let resp: Vec<u8> = recv
-                    .read_to_end(usize::max_value())
-                    .await
-                    .map_err(|e| anyhow!("failed to read response stream: {}", e))?;
+                    let resp: Vec<u8> = recv
+                        .read_to_end(usize::max_value())
+                        .await
+                        .map_err(|e| anyhow!("failed to read response stream: {}", e))
+                        .unwrap();
 
-                println!(
-                    "response received in {:?}",
-                    std::str::from_utf8(&resp).unwrap()
-                );
-                // conn.close(0u32.into(), b"");
+                    println!(
+                        "response received in {:?}",
+                        std::str::from_utf8(&resp).unwrap()
+                    );
+                    // conn.close(0u32.into(), b"");
+                }
+                Err(error) => println!("error: {}", error),
             }
-            Err(error) => println!("error: {}", error),
         }
-    }
+    // }
+    // .await;
+
+    // Ok(())
 }
 
 async fn handle_connection(conn: quinn::Connecting) -> Result<()> {

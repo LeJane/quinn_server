@@ -29,35 +29,35 @@ async fn main() -> Result<()> {
     let (endpoint, mut incoming) = endpoint.bind(&socket_addr).expect("bind failed");
     info!("server listening on {:?}", endpoint.local_addr());
 
-    let endpoint_arc = Arc::new(endpoint);
-
     // let addr = endpoint_arc.local_addr().unwrap();
 
     while let Some(connecting) = incoming.next().await {
         info!("connection incoming");
-        tokio::spawn(send_data_to(
-            endpoint_arc.clone(),
-            connecting.remote_address(),
-            // addr,
-            b"lklkokmll".to_vec(),
-        ));
-        tokio::spawn(handle_conection(connecting).unwrap_or_else(move |e| {
-            error!("connection failed: {reason}", reason = e.to_string());
-        }));
+
+        let connection = connecting.await?;
+
+        let _s = connection.connection.open_uni().await?;
+
+        let _bi_streams = connection.bi_streams;
+
+        write_to_peer_connection(&connection.connection, b"asdfasdfas".to_vec()).await?;
+
+        // tokio::spawn(
+        //     handle_conection(connection.connection, bi_streams).unwrap_or_else(move |e| {
+        //         error!("connection failed: {reason}", reason = e.to_string());
+        //     }),
+        // );
     }
 
     println!("Hello, world!");
     Ok(())
 }
-
-async fn handle_conection(conn: quinn::Connecting) -> Result<()> {
+#[allow(unused)]
+async fn handle_conection(
+    connection: quinn::Connection,
+    mut bi_streams: quinn::IncomingBiStreams,
+) -> Result<()> {
     println!("connection start.");
-
-    let quinn::NewConnection {
-        connection,
-        mut bi_streams,
-        ..
-    } = conn.await?;
 
     let span = info_span!(
         "connection",
@@ -97,6 +97,7 @@ async fn handle_conection(conn: quinn::Connecting) -> Result<()> {
 }
 
 //处理请求
+#[allow(unused)]
 async fn handle_request(
     // conn: quinn::Connection,
     (mut send, recv): (quinn::SendStream, quinn::RecvStream),
@@ -181,7 +182,7 @@ fn configure_client_connector() -> quinn::ClientConfig {
 
     peer_cfg
 }
-
+#[allow(unused)]
 async fn send_data_to(
     endpoint: Arc<quinn::Endpoint>,
     addr: SocketAddr,
@@ -203,6 +204,7 @@ async fn send_data_to(
     Ok(())
 }
 
+#[allow(unused)]
 async fn write_to_peer_connection(conn: &quinn::Connection, data: Vec<u8>) -> Result<()> {
     let (mut sender, _) = conn.open_bi().await.expect("failed open bi stream");
 
